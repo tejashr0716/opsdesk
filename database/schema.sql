@@ -1,0 +1,27 @@
+CREATE TABLE IF NOT EXISTS departments (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(80) NOT NULL UNIQUE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS staff (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(120) NOT NULL,
+  email VARCHAR(190) NOT NULL UNIQUE,
+  department_id INT NOT NULL,
+  role VARCHAR(80) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_staff_department FOREIGN KEY (department_id) REFERENCES departments(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tickets (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  title VARCHAR(200) NOT NULL,
+  status ENUM('open', 'in_progress', 'closed') NOT NULL DEFAULT 'open',
+  department_id INT NOT NULL,
+  staff_id INT NOT NULL,
+  hours DECIMAL(6,2) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  CONSTRAINT fk_tickets_department FOREIGN KEY (department_id) REFERENCES departments(id),
+  CONSTRAINT fk_tickets_staff FOREIGN KEY (staff_id) REFERENCES staff(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
