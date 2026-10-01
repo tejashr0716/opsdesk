@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OpsDesk -- 3-module FastAPI + MySQL demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root { --bg:#0C0C0C; --ink:#D7E2EA; --dim:rgba(215,226,234,.62); --line:rgba(215,226,234,.14); }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--ink); font-family:Kanit,sans-serif; line-height:1.5; }
+  a { color:var(--ink); }
+  header, main { max-width:1100px; margin:0 auto; padding:28px 20px; }
+  header { display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; align-items:flex-end; }
+  .eyebrow { letter-spacing:.18em; text-transform:uppercase; font-size:12px; color:var(--dim); }
+  h1 { font-size:clamp(2rem,6vw,4.2rem); line-height:.95; text-transform:uppercase; }
+  .banner { margin:18px 0 0; padding:12px 14px; border:1px solid var(--line); border-radius:14px; color:var(--dim); font-size:14px; }
+  .banner strong { color:var(--ink); font-weight:600; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; margin-top:22px; }
+  .card { border:1px solid var(--line); border-radius:18px; padding:18px; min-height:150px; }
+  .card h2 { font-size:13px; letter-spacing:.16em; text-transform:uppercase; color:var(--dim); margin-bottom:8px; }
+  .card p { font-weight:300; color:var(--dim); }
+  table { width:100%; border-collapse:collapse; margin-top:12px; font-size:14px; }
+  th, td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-weight:500; letter-spacing:.08em; text-transform:uppercase; font-size:11px; }
+  .links { display:flex; gap:18px; flex-wrap:wrap; }
+  .pill { display:inline-block; margin-top:10px; font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); }
+  code { font-size:13px; }
+  section { margin-top:36px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <p class="eyebrow">Tejas HR · public reconstruction</p>
+    <h1>OpsDesk</h1>
+  </div>
+  <div class="links">
+    <a href="https://github.com/tejashr0716/opsdesk">GitHub</a>
+    <a href="https://github.com/tejashr0716/opsdesk/blob/main/docs/architecture.md">Architecture</a>
+    <a href="https://tejashr0716.github.io">Portfolio</a>
+  </div>
+</header>
+<main>
+  <p class="banner" id="mode">This page is <strong>browser fixtures</strong>. It is not MySQL. Clone the repo and run Docker for the real FastAPI API.</p>
+  <div class="grid">
+    <article class="card">
+      <h2>01 Staff</h2>
+      <p>People on existing departments. List, create, fetch one. Three endpoints.</p>
+    </article>
+    <article class="card">
+      <h2>02 Tickets</h2>
+      <p>Work items joined to staff and departments that already exist. List, create, patch. Three endpoints.</p>
+    </article>
+    <article class="card">
+      <h2>03 Reports</h2>
+      <p>Date-window aggregations. Two endpoints. Three indexes on created_at, department+status, staff+created.</p>
+    </article>
+  </div>
+
+  <section>
+    <p class="eyebrow">Eight REST endpoints</p>
+    <table>
+      <thead><tr><th>Module</th><th>Method</th><th>Route</th></tr></thead>
+      <tbody>
+        <tr><td>Staff</td><td>GET</td><td><code>/api/v1/staff</code></td></tr>
+        <tr><td>Staff</td><td>POST</td><td><code>/api/v1/staff</code></td></tr>
+        <tr><td>Staff</td><td>GET</td><td><code>/api/v1/staff/{id}</code></td></tr>
+        <tr><td>Tickets</td><td>GET</td><td><code>/api/v1/tickets</code></td></tr>
+        <tr><td>Tickets</td><td>POST</td><td><code>/api/v1/tickets</code></td></tr>
+        <tr><td>Tickets</td><td>PATCH</td><td><code>/api/v1/tickets/{id}</code></td></tr>
+        <tr><td>Reports</td><td>GET</td><td><code>/api/v1/reports/summary</code></td></tr>
+        <tr><td>Reports</td><td>GET</td><td><code>/api/v1/reports/staff/{id}</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <p class="eyebrow">Sample staff</p>
+    <table id="staff-table"></table>
+  </section>
+  <section>
+    <p class="eyebrow">Sample tickets</p>
+    <table id="ticket-table"></table>
+  </section>
+  <section>
+    <p class="eyebrow">Sample report</p>
+    <table id="report-table"></table>
+    <p class="pill">Fixture totals only · internship hardware was ~4s to 0.6s after 3 indexes · rerun bench on Docker</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">Run the real API</p>
+    <pre style="margin-top:12px;white-space:pre-wrap;color:var(--dim)">git clone https://github.com/tejashr0716/opsdesk.git
+cd opsdesk
+cp .env.example .env
+docker compose up --build -d
+# UI http://localhost:8000   docs http://localhost:8000/docs</pre>
+  </section>
+</main>
+<script>
+const FIX_STAFF = [
+  {id:1,name:'Staff 001',department:'Engineering',role:'Engineer'},
+  {id:2,name:'Staff 002',department:'Operations',role:'Analyst'},
+  {id:3,name:'Staff 003',department:'Finance',role:'Coordinator'},
+  {id:4,name:'Staff 004',department:'Support',role:'Lead'},
+];
+const FIX_TICKETS = [
+  {id:101,title:'Weekly report #4401',status:'open',department:'Finance',staff_name:'Staff 003',hours:2},
+  {id:102,title:'Access request #3188',status:'in_progress',department:'Engineering',staff_name:'Staff 001',hours:1.5},
+  {id:103,title:'Queue overflow #2204',status:'closed',department:'Support',staff_name:'Staff 004',hours:3},
+];
+const FIX_REPORT = [
+  {department:'Engineering',status:'open',ticket_count:420,total_hours:910},
+  {department:'Finance',status:'closed',ticket_count:380,total_hours:640},
+  {department:'Support',status:'in_progress',ticket_count:210,total_hours:505},
+];
+function fill(id, headers, rows) {
+  const table = document.getElementById(id);
+  table.innerHTML = '<thead><tr>' + headers.map(h => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>' +
+    rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') + '</tbody>';
+}
+function paint(staff, tickets, report) {
+  fill('staff-table', ['ID','Name','Department','Role'], staff.map(s => [s.id, s.name, s.department, s.role]));
+  fill('ticket-table', ['ID','Title','Status','Department','Staff','Hours'], tickets.map(t => [t.id, t.title, t.status, t.department, t.staff_name, t.hours]));
+  fill('report-table', ['Department','Status','Tickets','Hours'], report.map(r => [r.department, r.status, r.ticket_count, r.total_hours]));
+}
+paint(FIX_STAFF, FIX_TICKETS, FIX_REPORT);
+
+const origins = [];
+if (location.port === '8000') origins.push('');
+origins.push('http://127.0.0.1:8000', 'http://localhost:8000');
+(async function () {
+  for (const origin of origins) {
+    try {
+      const health = await fetch(origin + '/health', { cache: 'no-store' });
+      if (!health.ok) continue;
+      const staff = await (await fetch(origin + '/api/v1/staff?limit=4')).json();
+      const tickets = await (await fetch(origin + '/api/v1/tickets?limit=4')).json();
+      const report = await (await fetch(origin + '/api/v1/reports/summary')).json();
+      paint(staff, tickets, report.rows || []);
+      document.getElementById('mode').innerHTML = 'Connected to <strong>live FastAPI + MySQL</strong> at ' + (origin || location.origin) + '. This is not the GitHub Pages fixture view.';
+      return;
+    } catch (err) {}
+  }
+})();
+</script>
+</body>
+</html>
