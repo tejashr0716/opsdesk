@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>OpsDesk -- 3-module FastAPI + MySQL demo</title>
+<title>OpsDesk — FastAPI + MySQL reconstruction</title>
+<meta name="description" content="Public reconstruction of Tejas HR intern work: 3 modules, 8 FastAPI REST endpoints over MySQL, 3 report indexes." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 <style>
-  :root { --bg:#0C0C0C; --ink:#D7E2EA; --dim:rgba(215,226,234,.62); --line:rgba(215,226,234,.14); }
+  :root { --bg:#0C0C0C; --ink:#D7E2EA; --dim:rgba(215,226,234,.62); --line:rgba(215,226,234,.14); --hi:#BBCCD7; }
   * { box-sizing:border-box; margin:0; padding:0; }
   body { background:var(--bg); color:var(--ink); font-family:Kanit,sans-serif; line-height:1.5; }
   a { color:var(--ink); }
@@ -19,7 +20,7 @@
   .banner { margin:18px 0 0; padding:12px 14px; border:1px solid var(--line); border-radius:14px; color:var(--dim); font-size:14px; }
   .banner strong { color:var(--ink); font-weight:600; }
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; margin-top:22px; }
-  .card { border:1px solid var(--line); border-radius:18px; padding:18px; min-height:150px; }
+  .card { border:1px solid var(--line); border-radius:18px; padding:18px; }
   .card h2 { font-size:13px; letter-spacing:.16em; text-transform:uppercase; color:var(--dim); margin-bottom:8px; }
   .card p { font-weight:300; color:var(--dim); }
   table { width:100%; border-collapse:collapse; margin-top:12px; font-size:14px; }
@@ -27,8 +28,23 @@
   th { color:var(--dim); font-weight:500; letter-spacing:.08em; text-transform:uppercase; font-size:11px; }
   .links { display:flex; gap:18px; flex-wrap:wrap; }
   .pill { display:inline-block; margin-top:10px; font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); }
-  code { font-size:13px; }
+  code, pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; }
   section { margin-top:36px; }
+  .btns { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  button {
+    background:transparent; color:var(--ink); border:1px solid var(--line); border-radius:999px;
+    padding:8px 12px; font:inherit; font-size:12px; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;
+  }
+  button.active, button:hover { border-color:var(--hi); }
+  .split { display:grid; grid-template-columns:1.1fr .9fr; gap:16px; margin-top:16px; }
+  @media (max-width:820px) { .split { grid-template-columns:1fr; } }
+  .panel { border:1px solid var(--line); border-radius:18px; padding:16px; min-height:220px; }
+  pre { white-space:pre-wrap; color:var(--dim); word-break:break-word; }
+  label { display:block; font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); margin:10px 0 4px; }
+  input, select {
+    width:100%; background:transparent; color:var(--ink); border:1px solid var(--line);
+    border-radius:10px; padding:8px 10px; font:inherit;
+  }
 </style>
 </head>
 <body>
@@ -44,21 +60,39 @@
   </div>
 </header>
 <main>
-  <p class="banner" id="mode">This page is <strong>browser fixtures</strong>. It is not MySQL. Clone the repo and run Docker for the real FastAPI API.</p>
+  <p class="banner" id="mode">This page is <strong>browser fixtures</strong>. It is not MySQL. Clone the repo and run Docker for the real FastAPI API. KodNest source stays internal.</p>
+
   <div class="grid">
     <article class="card">
       <h2>01 Staff</h2>
-      <p>People on existing departments. List, create, fetch one. Three endpoints.</p>
+      <p>People attached to departments that already exist. List, create, fetch one. Three endpoints.</p>
     </article>
     <article class="card">
       <h2>02 Tickets</h2>
-      <p>Work items joined to staff and departments that already exist. List, create, patch. Three endpoints.</p>
+      <p>Work items joined to staff and departments. List, create, patch. Three endpoints.</p>
     </article>
     <article class="card">
       <h2>03 Reports</h2>
-      <p>Date-window aggregations. Two endpoints. Three indexes on created_at, department+status, staff+created.</p>
+      <p>Date-window GROUP BY. Two endpoints. Three indexes: created_at, department+status, staff+created.</p>
     </article>
   </div>
+
+  <section>
+    <p class="eyebrow">Click an endpoint</p>
+    <p style="margin-top:8px;color:var(--dim);font-weight:300">Walk the eight routes the resume names. On GitHub Pages this is fixture JSON. With Docker on :8000 the same UI talks to MySQL.</p>
+    <div class="btns" id="route-btns"></div>
+    <div class="split">
+      <div class="panel">
+        <p class="eyebrow" id="req-title">Request</p>
+        <div id="form"></div>
+        <div class="btns"><button type="button" id="send">Send</button></div>
+      </div>
+      <div class="panel">
+        <p class="eyebrow">Response</p>
+        <pre id="out">Select a route.</pre>
+      </div>
+    </div>
+  </section>
 
   <section>
     <p class="eyebrow">Eight REST endpoints</p>
@@ -78,22 +112,21 @@
   </section>
 
   <section>
-    <p class="eyebrow">Sample staff</p>
-    <table id="staff-table"></table>
-  </section>
-  <section>
-    <p class="eyebrow">Sample tickets</p>
-    <table id="ticket-table"></table>
-  </section>
-  <section>
-    <p class="eyebrow">Sample report</p>
-    <table id="report-table"></table>
-    <p class="pill">Fixture totals only · internship hardware was ~4s to 0.6s after 3 indexes · rerun bench on Docker</p>
+    <p class="eyebrow">Why the report was slow</p>
+    <table>
+      <thead><tr><th>Index</th><th>Columns</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td><code>idx_tickets_created_at</code></td><td>created_at</td><td>Date window on the summary report</td></tr>
+        <tr><td><code>idx_tickets_dept_status</code></td><td>department_id, status</td><td>GROUP BY department and status</td></tr>
+        <tr><td><code>idx_tickets_staff_created</code></td><td>staff_id, created_at</td><td>Per-staff report in a date window</td></tr>
+      </tbody>
+    </table>
+    <p class="pill">Internship hardware ~4s → 0.6s · laptop numbers come from <code>python -m scripts.bench_report</code></p>
   </section>
 
   <section>
     <p class="eyebrow">Run the real API</p>
-    <pre style="margin-top:12px;white-space:pre-wrap;color:var(--dim)">git clone https://github.com/tejashr0716/opsdesk.git
+    <pre style="margin-top:12px;color:var(--dim)">git clone https://github.com/tejashr0716/opsdesk.git
 cd opsdesk
 cp .env.example .env
 docker compose up --build -d
@@ -101,47 +134,172 @@ docker compose up --build -d
   </section>
 </main>
 <script>
-const FIX_STAFF = [
-  {id:1,name:'Staff 001',department:'Engineering',role:'Engineer'},
-  {id:2,name:'Staff 002',department:'Operations',role:'Analyst'},
-  {id:3,name:'Staff 003',department:'Finance',role:'Coordinator'},
-  {id:4,name:'Staff 004',department:'Support',role:'Lead'},
+const DEPTS = {1:'Engineering',2:'Operations',3:'Finance',4:'Support'};
+const now = function () { return new Date().toISOString().slice(0,19); };
+let liveOrigin = null;
+let staff = [
+  {id:1,name:'Staff 001',email:'staff001@opsdesk.dev',department_id:1,department:'Engineering',role:'Engineer',created_at:'2026-02-04T09:00:00'},
+  {id:2,name:'Staff 002',email:'staff002@opsdesk.dev',department_id:2,department:'Operations',role:'Analyst',created_at:'2026-02-05T09:00:00'},
+  {id:3,name:'Staff 003',email:'staff003@opsdesk.dev',department_id:3,department:'Finance',role:'Coordinator',created_at:'2026-02-06T09:00:00'},
+  {id:4,name:'Staff 004',email:'staff004@opsdesk.dev',department_id:4,department:'Support',role:'Lead',created_at:'2026-02-07T09:00:00'}
 ];
-const FIX_TICKETS = [
-  {id:101,title:'Weekly report #4401',status:'open',department:'Finance',staff_name:'Staff 003',hours:2},
-  {id:102,title:'Access request #3188',status:'in_progress',department:'Engineering',staff_name:'Staff 001',hours:1.5},
-  {id:103,title:'Queue overflow #2204',status:'closed',department:'Support',staff_name:'Staff 004',hours:3},
+let tickets = [
+  {id:101,title:'Weekly report #4401',status:'open',department_id:3,department:'Finance',staff_id:3,staff_name:'Staff 003',hours:2,created_at:'2026-09-12T10:00:00',updated_at:'2026-09-12T10:00:00'},
+  {id:102,title:'Access request #3188',status:'in_progress',department_id:1,department:'Engineering',staff_id:1,staff_name:'Staff 001',hours:1.5,created_at:'2026-09-18T11:00:00',updated_at:'2026-09-20T08:00:00'},
+  {id:103,title:'Queue overflow #2204',status:'closed',department_id:4,department:'Support',staff_id:4,staff_name:'Staff 004',hours:3,created_at:'2026-09-22T14:00:00',updated_at:'2026-09-23T09:00:00'}
 ];
-const FIX_REPORT = [
-  {department:'Engineering',status:'open',ticket_count:420,total_hours:910},
-  {department:'Finance',status:'closed',ticket_count:380,total_hours:640},
-  {department:'Support',status:'in_progress',ticket_count:210,total_hours:505},
+let nextStaff = 5;
+let nextTicket = 104;
+const ROUTES = [
+  {id:'list-staff', method:'GET', path:'/api/v1/staff', fields:[]},
+  {id:'create-staff', method:'POST', path:'/api/v1/staff', fields:[
+    {name:'name', label:'Name', value:'Staff 005'},
+    {name:'email', label:'Email', value:'staff005@opsdesk.dev'},
+    {name:'department_id', label:'Department id', value:'1'},
+    {name:'role', label:'Role', value:'Engineer'}
+  ]},
+  {id:'get-staff', method:'GET', path:'/api/v1/staff/{id}', fields:[{name:'id', label:'Staff id', value:'1'}]},
+  {id:'list-tickets', method:'GET', path:'/api/v1/tickets', fields:[]},
+  {id:'create-ticket', method:'POST', path:'/api/v1/tickets', fields:[
+    {name:'title', label:'Title', value:'Laptop setup #5001'},
+    {name:'department_id', label:'Department id', value:'1'},
+    {name:'staff_id', label:'Staff id', value:'1'},
+    {name:'hours', label:'Hours', value:'2'}
+  ]},
+  {id:'patch-ticket', method:'PATCH', path:'/api/v1/tickets/{id}', fields:[
+    {name:'id', label:'Ticket id', value:'101'},
+    {name:'status', label:'Status', value:'in_progress'},
+    {name:'hours', label:'Hours', value:'2.5'}
+  ]},
+  {id:'report-summary', method:'GET', path:'/api/v1/reports/summary', fields:[]},
+  {id:'report-staff', method:'GET', path:'/api/v1/reports/staff/{id}', fields:[{name:'id', label:'Staff id', value:'1'}]}
 ];
-function fill(id, headers, rows) {
-  const table = document.getElementById(id);
-  table.innerHTML = '<thead><tr>' + headers.map(h => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>' +
-    rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') + '</tbody>';
+let current = ROUTES[0];
+function val(name) {
+  const el = document.getElementById('f-' + name);
+  return el ? el.value.trim() : '';
 }
-function paint(staff, tickets, report) {
-  fill('staff-table', ['ID','Name','Department','Role'], staff.map(s => [s.id, s.name, s.department, s.role]));
-  fill('ticket-table', ['ID','Title','Status','Department','Staff','Hours'], tickets.map(t => [t.id, t.title, t.status, t.department, t.staff_name, t.hours]));
-  fill('report-table', ['Department','Status','Tickets','Hours'], report.map(r => [r.department, r.status, r.ticket_count, r.total_hours]));
+function num(name) { return Number(val(name)); }
+function show(status, body) {
+  document.getElementById('out').textContent = status + '\n' + JSON.stringify(body, null, 2);
 }
-paint(FIX_STAFF, FIX_TICKETS, FIX_REPORT);
-
-const origins = [];
-if (location.port === '8000') origins.push('');
-origins.push('http://127.0.0.1:8000', 'http://localhost:8000');
+function renderForm() {
+  document.getElementById('req-title').textContent = current.method + '  ' + current.path;
+  document.getElementById('form').innerHTML = current.fields.map(function (f) {
+    return '<label>' + f.label + '</label><input id="f-' + f.name + '" value="' + f.value + '" />';
+  }).join('');
+  document.querySelectorAll('#route-btns button').forEach(function (b) {
+    b.className = b.dataset.id === current.id ? 'active' : '';
+  });
+}
+function fixtureSend() {
+  try {
+    if (current.id === 'list-staff') return show('200', staff);
+    if (current.id === 'get-staff') {
+      const row = staff.find(function (s) { return s.id === num('id'); });
+      return row ? show('200', row) : show('404', {detail:'staff ' + val('id') + ' not found'});
+    }
+    if (current.id === 'create-staff') {
+      const email = val('email').toLowerCase();
+      if (email.indexOf('@') < 1 || email.endsWith('@')) return show('422', {detail:'email must look like name@domain'});
+      if (staff.some(function (s) { return s.email === email; })) return show('409', {detail:'email already exists'});
+      const department_id = num('department_id');
+      if (!DEPTS[department_id]) return show('404', {detail:'department ' + department_id + ' not found'});
+      const row = {id:nextStaff++, name:val('name'), email:email, department_id:department_id, department:DEPTS[department_id], role:val('role'), created_at:now()};
+      staff.push(row);
+      return show('201', row);
+    }
+    if (current.id === 'list-tickets') return show('200', tickets);
+    if (current.id === 'create-ticket') {
+      const person = staff.find(function (s) { return s.id === num('staff_id'); });
+      const department_id = num('department_id');
+      if (!person) return show('404', {detail:'staff ' + val('staff_id') + ' not found'});
+      if (!DEPTS[department_id]) return show('404', {detail:'department ' + department_id + ' not found'});
+      const t = now();
+      const row = {id:nextTicket++, title:val('title'), status:'open', department_id:department_id, department:DEPTS[department_id], staff_id:person.id, staff_name:person.name, hours:num('hours'), created_at:t, updated_at:t};
+      tickets.unshift(row);
+      return show('201', row);
+    }
+    if (current.id === 'patch-ticket') {
+      const row = tickets.find(function (t) { return t.id === num('id'); });
+      if (!row) return show('404', {detail:'ticket ' + val('id') + ' not found'});
+      const status = val('status');
+      if (status && ['open','in_progress','closed'].indexOf(status) === -1) return show('422', {detail:'invalid status'});
+      if (status) row.status = status;
+      if (val('hours') !== '') row.hours = num('hours');
+      row.updated_at = now();
+      return show('200', row);
+    }
+    if (current.id === 'report-summary') {
+      const map = {};
+      tickets.forEach(function (t) {
+        const key = t.department + '|' + t.status;
+        if (!map[key]) map[key] = {department:t.department, status:t.status, ticket_count:0, total_hours:0};
+        map[key].ticket_count += 1;
+        map[key].total_hours = Math.round((map[key].total_hours + t.hours) * 100) / 100;
+      });
+      return show('200', {from:'2026-07-01T00:00:00', to:'2026-10-01T00:00:00', rows:Object.keys(map).sort().map(function (k) { return map[k]; })});
+    }
+    if (current.id === 'report-staff') {
+      const person = staff.find(function (s) { return s.id === num('id'); });
+      if (!person) return show('404', {detail:'staff ' + val('id') + ' not found'});
+      const map = {};
+      tickets.filter(function (t) { return t.staff_id === person.id; }).forEach(function (t) {
+        if (!map[t.status]) map[t.status] = {status:t.status, ticket_count:0, total_hours:0};
+        map[t.status].ticket_count += 1;
+        map[t.status].total_hours = Math.round((map[t.status].total_hours + t.hours) * 100) / 100;
+      });
+      return show('200', {staff_id:person.id, from:'2026-07-01T00:00:00', to:'2026-10-01T00:00:00', rows:Object.keys(map).sort().map(function (k) { return map[k]; })});
+    }
+  } catch (err) {
+    show('500', {detail:String(err)});
+  }
+}
+async function liveSend() {
+  const origin = liveOrigin;
+  let path = current.path;
+  let body = null;
+  if (current.id === 'get-staff' || current.id === 'report-staff') path = path.replace('{id}', val('id'));
+  if (current.id === 'patch-ticket') path = '/api/v1/tickets/' + val('id');
+  if (current.id === 'create-staff') body = {name:val('name'), email:val('email'), department_id:num('department_id'), role:val('role')};
+  if (current.id === 'create-ticket') body = {title:val('title'), department_id:num('department_id'), staff_id:num('staff_id'), hours:num('hours')};
+  if (current.id === 'patch-ticket') body = {status:val('status'), hours:num('hours')};
+  const res = await fetch(origin + path, {
+    method: current.method,
+    headers: body ? {'Content-Type':'application/json'} : undefined,
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await res.json();
+  show(String(res.status), data);
+}
+async function send() {
+  if (liveOrigin !== null) {
+    try { await liveSend(); return; } catch (err) { liveOrigin = null; }
+  }
+  fixtureSend();
+}
+const btnBox = document.getElementById('route-btns');
+ROUTES.forEach(function (r) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.dataset.id = r.id;
+  b.textContent = r.method + ' ' + r.path.replace('/api/v1','');
+  b.onclick = function () { current = r; renderForm(); };
+  btnBox.appendChild(b);
+});
+document.getElementById('send').onclick = send;
+renderForm();
+fixtureSend();
 (async function () {
-  for (const origin of origins) {
+  const origins = [];
+  if (location.port === '8000') origins.push('');
+  origins.push('http://127.0.0.1:8000', 'http://localhost:8000');
+  for (let i = 0; i < origins.length; i++) {
     try {
-      const health = await fetch(origin + '/health', { cache: 'no-store' });
+      const health = await fetch(origins[i] + '/health', { cache:'no-store' });
       if (!health.ok) continue;
-      const staff = await (await fetch(origin + '/api/v1/staff?limit=4')).json();
-      const tickets = await (await fetch(origin + '/api/v1/tickets?limit=4')).json();
-      const report = await (await fetch(origin + '/api/v1/reports/summary')).json();
-      paint(staff, tickets, report.rows || []);
-      document.getElementById('mode').innerHTML = 'Connected to <strong>live FastAPI + MySQL</strong> at ' + (origin || location.origin) + '. This is not the GitHub Pages fixture view.';
+      liveOrigin = origins[i];
+      document.getElementById('mode').innerHTML = 'Connected to <strong>live FastAPI + MySQL</strong> at ' + (liveOrigin || location.origin) + '. This is not the GitHub Pages fixture view.';
       return;
     } catch (err) {}
   }
