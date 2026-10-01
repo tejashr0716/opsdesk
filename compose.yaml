@@ -1,0 +1,34 @@
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-opsdesk}
+      MYSQL_USER: ${DB_USER:-opsdesk}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-opsdesk_local_only}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-opsdesk_root_local_only}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql -u$$MYSQL_USER -e 'SELECT 1' $$MYSQL_DATABASE"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: ${DB_USER:-opsdesk}
+      DB_PASSWORD: ${DB_PASSWORD:-opsdesk_local_only}
+      DB_NAME: ${DB_NAME:-opsdesk}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  mysql-data:
