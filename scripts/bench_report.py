@@ -86,7 +86,10 @@ def assert_safe_environment(settings: Settings) -> None:
 
 
 def snapshot_indexes(cursor) -> dict[str, list[tuple[str, int]]]:
-    """Record current index names and column sequences for tickets table."""
+    """Record current index names and column sequences for tickets table.
+
+    Preserved for backwards compatibility with test harnesses and probes.
+    """
     cursor.execute(
         """
         SELECT INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX
@@ -99,6 +102,104 @@ def snapshot_indexes(cursor) -> dict[str, list[tuple[str, int]]]:
     for idx_name, col_name, seq in cursor.fetchall():
         result.setdefault(idx_name, []).append((col_name, int(seq)))
     return result
+
+
+def snapshot_index_definitions(cursor, table_name: str = "tickets") -> dict[str, dict[str, Any]]:
+    """Capture full index metadata including column order, uniqueness, prefix length,
+    index type, direction, and visibility for table.
+    """
+    cursor.execute(
+        """
+        SELECT INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME, COLLATION, SUB_PART, INDEX_TYPE, IS_VISIBLE
+        FROM information_schema.statistics
+        WHERE table_schema = DATABASE() AND table_name = %s
+        ORDER BY INDEX_NAME, SEQ_IN_INDEX
+        """,
+        (table_name,),
+    )
+    result: dict[str, dict[str, Any]] = {}
+    for idx_name, non_unique, seq, col_name, collation, sub_part, index_type, is_visible in cursor.fetchall():
+        if idx_name not in result:
+            result[idx_name] = {
+                "name": idx_name,
+                "table": table_name,
+                "unique": (int(non_unique) == 0),
+                "index_type": str(index_type or "BTREE"),
+                "is_visible": str(is_visible or "YES"),
+                "columns": [],
+            }
+        result[idx_name]["columns"].append({
+            "name": col_name,
+            "seq": int(seq),
+            "collation": collation,
+            "sub_part": int(sub_part) if sub_part is not None else None,
+        })
+
+    # Construct the exact executable DDL statement for every non-PRIMARY index
+    for idx_name, defn in result.items():
+        if idx_name == "PRIMARY":
+            continue
+        unique_kw = "UNIQUE " if defn["unique"] else ""
+        col_parts = []
+        for col in sorted(defn["columns"], key=lambda c: c["seq"]):
+            part = f"`{col['name']}`"
+            if col["sub_part"]:
+                part += f"({col['sub_part']})"
+            if col["collation"] == "D":
+                part += " DESC"
+            col_parts.append(part)
+        cols_sql = ", ".join(col_parts)
+        type_sql = f" USING {defn['index_type']}" if defn["index_type"] in ("BTREE", "HASH") else ""
+        vis_sql = " INVISIBLE" if defn["is_visible"] == "NO" else ""
+        defn["create_sql"] = f"CREATE {unique_kw}INDEX `{idx_name}` ON `{table_name}` ({cols_sql}){type_sql}{vis_sql}"
+
+    return result
+
+
+def compare_index_definitions(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    allowed_retained_fk_indexes: set[str] | None = None,
+) -> tuple[bool, list[str]]:
+    """Compare complete index metadata between before and after states.
+
+    Returns (matches, diff_reasons).
+    """
+    if allowed_retained_fk_indexes is None:
+        allowed_retained_fk_indexes = set()
+
+    diffs: list[str] = []
+    before_names = set(before.keys())
+    after_names = set(after.keys())
+
+    missing = before_names - after_names
+    if missing:
+        diffs.append(f"Missing indexes after restoration: {sorted(missing)}")
+
+    extra = (after_names - before_names) - allowed_retained_fk_indexes
+    if extra:
+        diffs.append(f"Unexpected extra indexes after restoration: {sorted(extra)}")
+
+    common = before_names & after_names
+    for name in common:
+        b = before[name]
+        a = after[name]
+        if not isinstance(b, dict) or not isinstance(a, dict):
+            if b != a:
+                diffs.append(f"Index '{name}' snapshot data mismatch: {b} vs {a}")
+            continue
+        if b.get("unique") != a.get("unique"):
+            diffs.append(f"Index '{name}' uniqueness mismatch: before={b.get('unique')} vs after={a.get('unique')}")
+        if b.get("index_type") != a.get("index_type"):
+            diffs.append(f"Index '{name}' index_type mismatch: before={b.get('index_type')} vs after={a.get('index_type')}")
+        if b.get("is_visible") != a.get("is_visible"):
+            diffs.append(f"Index '{name}' visibility mismatch: before={b.get('is_visible')} vs after={a.get('is_visible')}")
+        b_cols = [(c["name"], c["seq"], c.get("collation"), c.get("sub_part")) for c in b.get("columns", [])]
+        a_cols = [(c["name"], c["seq"], c.get("collation"), c.get("sub_part")) for c in a.get("columns", [])]
+        if b_cols != a_cols:
+            diffs.append(f"Index '{name}' columns mismatch: before={b_cols} vs after={a_cols}")
+
+    return len(diffs) == 0, diffs
 
 
 def ensure_foreign_key_indexes(cursor) -> None:
@@ -132,22 +233,57 @@ def apply_index_dict(cursor, index_dict: dict[str, str]) -> None:
             cursor.execute(sql)
 
 
-def restore_index_snapshot(cursor, target_snapshot: dict[str, list[tuple[str, int]]]) -> None:
-    """Restore table indexes to match target_snapshot."""
+def restore_index_snapshot(cursor, target_snapshot: dict[str, Any], table_name: str = "tickets") -> None:
+    """Restore table indexes to match the captured target definition snapshot.
+
+    Restores using the captured definitions—not predefined optimization SQL.
+    Preserves column order, uniqueness, prefix lengths, index type, direction, and visibility.
+    Preserves foreign-key support throughout restoration.
+    """
     ensure_foreign_key_indexes(cursor)
-    current = snapshot_indexes(cursor)
+    current_defs = snapshot_index_definitions(cursor, table_name=table_name)
 
-    # Drop any extra candidate report indexes not in target_snapshot
-    for name in set(current.keys()) - set(target_snapshot.keys()):
-        if name in ALL_CANDIDATE_REPORT_INDEXES:
-            cursor.execute(f"ALTER TABLE tickets DROP INDEX {name}")
+    # 1. Drop any extra candidate report indexes present currently but NOT in target_snapshot
+    target_names = set(target_snapshot.keys())
+    current_names = set(current_defs.keys())
+    for name in current_names - target_names:
+        if name != "PRIMARY" and name not in {"fk_tickets_dept_idx", "fk_tickets_staff_idx"}:
+            cursor.execute(f"ALTER TABLE `{table_name}` DROP INDEX `{name}`")
 
-    # Re-add any missing candidate report indexes present in target_snapshot
-    current_after_drop = snapshot_indexes(cursor)
-    all_defs = {**FLAWED_THREE_INDEXES, **OPTIMIZED_COVERING_INDEXES}
-    for name in set(target_snapshot.keys()) - set(current_after_drop.keys()):
-        if name in all_defs:
-            cursor.execute(all_defs[name])
+    # Refresh current after drops
+    current_defs = snapshot_index_definitions(cursor, table_name=table_name)
+
+    # 2. Restore / fix indexes present in target_snapshot:
+    for name, target_val in target_snapshot.items():
+        if name == "PRIMARY":
+            continue
+
+        create_sql = None
+        if isinstance(target_val, dict) and "create_sql" in target_val:
+            create_sql = target_val["create_sql"]
+        elif isinstance(target_val, list):
+            col_names = [col[0] for col in sorted(target_val, key=lambda x: x[1])]
+            cols_str = ", ".join(f"`{c}`" for c in col_names)
+            create_sql = f"CREATE INDEX `{name}` ON `{table_name}` ({cols_str})"
+
+        if not create_sql:
+            continue
+
+        if name in current_defs:
+            matches = True
+            if isinstance(target_val, list):
+                cur_cols = [(c["name"], c["seq"]) for c in current_defs[name]["columns"]]
+                if cur_cols != target_val:
+                    matches = False
+            elif isinstance(target_val, dict) and "columns" in target_val:
+                m, _ = compare_index_definitions({name: target_val}, {name: current_defs[name]})
+                matches = m
+
+            if not matches:
+                cursor.execute(f"ALTER TABLE `{table_name}` DROP INDEX `{name}`")
+                cursor.execute(create_sql)
+        else:
+            cursor.execute(create_sql)
 
 
 def compute_stats(samples: list[float]) -> dict[str, Any]:
@@ -328,8 +464,8 @@ def main():
     conn = connect(settings)
     cursor = conn.cursor()
 
-    # Snapshot starting indexes for explicit finally restoration:
-    initial_snapshot = snapshot_indexes(cursor)
+    # Snapshot starting index definitions for explicit finally restoration:
+    initial_definitions = snapshot_index_definitions(cursor)
 
     # Spawn real local loopback Uvicorn server for network HTTP measurements:
     free_port = get_free_port()
@@ -561,23 +697,36 @@ def main():
             pass
 
         # Strict index restoration to snapshot and explicit verification
+        print("Restoring initial index snapshot in finally block...")
+        restore_error = None
         try:
-            print("Restoring initial index snapshot in finally block...")
-            restore_index_snapshot(cursor, initial_snapshot)
-            restored_snapshot = snapshot_indexes(cursor)
-            # Verify explicit restoration:
-            restored_names = set(restored_snapshot.keys())
-            initial_names = set(initial_snapshot.keys())
-            diff = restored_names.symmetric_difference(initial_names)
-            # Note: dedicated FK indexes added for safety are retained if needed
-            if diff - {"fk_tickets_dept_idx", "fk_tickets_staff_idx"}:
-                print(f"Warning: schema restoration difference detected: {diff}")
+            restore_index_snapshot(cursor, initial_definitions)
+            restored_definitions = snapshot_index_definitions(cursor)
+            matches, diffs = compare_index_definitions(
+                initial_definitions,
+                restored_definitions,
+                allowed_retained_fk_indexes={"fk_tickets_dept_idx", "fk_tickets_staff_idx"},
+            )
+            if not matches:
+                restore_error = RuntimeError(f"Index restoration verification failed: {'; '.join(diffs)}")
             else:
-                print("Schema restoration verified successfully.")
+                retained = (set(restored_definitions.keys()) - set(initial_definitions.keys())) & {"fk_tickets_dept_idx", "fk_tickets_staff_idx"}
+                if retained:
+                    print(f"Schema restoration verified successfully (retained required foreign-key support indexes: {sorted(retained)}).")
+                else:
+                    print("Schema restoration verified successfully (exact match).")
         except Exception as exc:
-            print(f"Error during schema restoration: {exc}")
-        cursor.close()
-        conn.close()
+            restore_error = exc
+        finally:
+            try:
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+
+        if restore_error:
+            print(f"FATAL RESTORATION FAILURE: {restore_error}", file=sys.stderr)
+            raise restore_error
 
 
 if __name__ == "__main__":
