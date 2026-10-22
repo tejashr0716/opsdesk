@@ -147,18 +147,19 @@ def apply_indexes(cursor):
         """
         SELECT INDEX_NAME FROM information_schema.statistics
         WHERE table_schema = DATABASE() AND table_name = 'tickets'
-          AND INDEX_NAME IN ('idx_tickets_created_at', 'idx_tickets_dept_status', 'idx_tickets_staff_created')
         """
     )
     existing = {row[0] for row in cursor.fetchall()}
     statements = {
-        "idx_tickets_created_at": "ALTER TABLE tickets ADD INDEX idx_tickets_created_at (created_at)",
-        "idx_tickets_dept_status": "ALTER TABLE tickets ADD INDEX idx_tickets_dept_status (department_id, status)",
-        "idx_tickets_staff_created": "ALTER TABLE tickets ADD INDEX idx_tickets_staff_created (staff_id, created_at)",
+        "fk_tickets_dept_idx": "ALTER TABLE tickets ADD INDEX fk_tickets_dept_idx (department_id)",
+        "fk_tickets_staff_idx": "ALTER TABLE tickets ADD INDEX fk_tickets_staff_idx (staff_id)",
+        "idx_tickets_dept_covering": "ALTER TABLE tickets ADD INDEX idx_tickets_dept_covering (department_id, created_at, status, hours)",
+        "idx_tickets_staff_covering": "ALTER TABLE tickets ADD INDEX idx_tickets_staff_covering (staff_id, created_at, status, hours)",
     }
     for name, sql in statements.items():
         if name not in existing:
             cursor.execute(sql)
+
 
 
 def main():
