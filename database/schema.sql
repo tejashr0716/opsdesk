@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS staff (
   department_id INT NOT NULL,
   role VARCHAR(80) NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY fk_staff_dept_idx (department_id),
   CONSTRAINT fk_staff_department FOREIGN KEY (department_id) REFERENCES departments(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -22,6 +23,9 @@ CREATE TABLE IF NOT EXISTS tickets (
   hours DECIMAL(6,2) NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
+  KEY fk_tickets_dept_idx (department_id),
+  KEY fk_tickets_staff_idx (staff_id),
   CONSTRAINT fk_tickets_department FOREIGN KEY (department_id) REFERENCES departments(id),
   CONSTRAINT fk_tickets_staff FOREIGN KEY (staff_id) REFERENCES staff(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
