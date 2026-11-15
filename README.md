@@ -1,4 +1,4 @@
-# OpsDesk — 3-module FastAPI + MySQL desk API
+# Internal Help Desk & Ticket Reporting System (OpsDesk)
 
 **Python · FastAPI · MySQL · REST · HTML/CSS/JavaScript**
 
